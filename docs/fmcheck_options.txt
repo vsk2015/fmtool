@@ -1,0 +1,10 @@
+Options:
+  -h --help     Show this screen.
+  -d --debug  Log debug level
+  -t, --topology=FILE   Topolofy file name [default: fm-topo.yml].
+  -c, --controller=IP   Controller IP address
+  -s --stopped      If Mininet is not running.
+  -r --segmentrouting  Use segment routing topology.
+  -a --check-stats  Check flow/groups states with previous check
+  --version     Show version.
+
