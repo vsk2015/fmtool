@@ -48,7 +48,8 @@ import logging
 import coloredlogs
 from fmcheck.topology import Topology
 import fmcheck.openflow
-from docopt import docopt
+#from docopt import docopt  : On some systems like my lap this is not working
+import docopt
 
 
 class Shell(object):
