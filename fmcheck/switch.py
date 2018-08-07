@@ -187,28 +187,30 @@ class Switch(object):
             'restart port method is not implemented by this switch {}'.format(self.name))
 
 class SwitchThread(threading.Thread):
-    def  __init__(self, q):
+    def  __init__(self, q,dbname,fmcheckrun):
         super(SwitchThread, self).__init__()
         self.q = q
         self.exception = None
+        self.dbname = dbname
+        self.fmcheckrun = fmcheckrun
 
     def run(self):
         while True:
             switch = self.q.get()
             try:
-                self.load_openflow_from_switch(switch)
+                self.load_openflow_from_switch(switch,self.dbname,self.fmcheckrun)
             except Exception as e:
                 self.exception = e
             finally:
                 self.q.task_done()
 
     @staticmethod
-    def load_openflow_from_switch(switch):
+    def load_openflow_from_switch(switch, dbname,fmcheckrun):
         groups = switch.get_groups()
         if groups:
             for group in groups:
                 switch.get_group(group['id']).add_switch(group)
-        flows = switch.get_flows()
+        flows = switch.get_flows(dbname,fmcheckrun)
         if flows:
             for flow in flows:
                 switch.get_flow(cookie=flow['cookie']).add_switch(flow)

@@ -16,9 +16,12 @@ from fmcheck.switch import Switch
 from fmcheck.switch import SwitchThread
 from fmcheck.ovs import OVS
 from fmcheck.noviflow import Noviflow
-from fmcheck.utils import check_mandatory_values
+from fmcheck.utils import check_mandatory_values, compare_switch_tables
 from fmcheck.host import Host
 import fmcheck.openflow as openflow
+from fmcheck.db import createDb, createTable, enterTabledata, selectTable, dbClose
+import time
+import sys, traceback
 
 class Topology(object):
 
@@ -275,12 +278,12 @@ class Topology(object):
                 self.get_switch(src_node).get_link(
                     src_port).add_sr_dst(dst_port)
 
-    def validate_openflow_elements(self):
+    def validate_openflow_elements(self,dbname,fmcheckrun):
         group_errors = []
         flow_errors = []
         result = True
         try:
-            self.load_openflow_elements()
+            self.load_openflow_elements(dbname,fmcheckrun)
             for switch in self.switches.values():
                 logging.info("Total number of flows (excluding duplicates) in device %s are %s", switch.name, len(switch.flows))
                 for group in switch.groups.values():
@@ -304,18 +307,31 @@ class Topology(object):
                 logging.info('Flows are in sync')
             return result
 
-    def load_openflow_elements(self):
+    def compare_fmcheck_runs(self,dbname, run1, run2):
+        logging.debug("In comparison for %s and %s within DB %s ", run1, run2,dbname)
+        try:
+            dbcur, dbconn = createDb(dbname)
+            for switch in self.switches.values():
+                listofSwTablerows1 = selectTable(dbcur,switch.name, "RUN_NAME, OVS_NAME, FLOW_LINE, COOKIE_VALUE")
+                compare_switch_tables(listofSwTablerows1, run1, run2,switch.name)
+        except:
+            print("Exception in compare_fmcheck_runs")
+            traceback.print_exc()
+        finally:
+            dbClose(dbcur,dbconn)
+    def load_openflow_elements(self,dbname,fmcheckrun):
         ctrl = self.default_ctrl
-
         q = Queue.Queue(len(self.switches.values()))
         threads = []
         for _ in self.switches.values():
-            t = SwitchThread(q)
+            t = SwitchThread(q,dbname,fmcheckrun)
             t.setDaemon(True)
             t.start()
             threads.append(t)
         for switch in self.switches.values():
             q.put(switch)
+            if bool(dbname) & bool(fmcheckrun):
+                time.sleep(20)
         q.join()
         for t in threads:
             e = t.get_exception()

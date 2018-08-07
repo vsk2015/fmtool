@@ -2,8 +2,10 @@ import time
 import re
 import subprocess
 import logging
+from fmcheck.db import createDb, createTable, enterTabledata, selectTable, dbClose
 from fmcheck.switch import Switch
 from fmcheck.ssh import SSH
+
 
 
 class OVS(Switch):
@@ -52,11 +54,19 @@ class OVS(Switch):
     def delete_groups(self):
         return self._execute_command("sudo ovs-ofctl del-groups {} --protocol=Openflow13".format(self.name))
 
-    def get_flows(self):
+    def get_flows(self,dbname=False, fmcheckrun=False):
         output = self._execute_command(
             "sudo ovs-ofctl dump-flows {} --protocol=Openflow13".format(self.name))
         if not output:
             return None
+        print "Within get_flows"
+        dbcur=False
+        dbconn=False
+        if bool(dbname) & bool(fmcheckrun):
+            dbcur, dbconn = createDb(dbname)
+        if bool(dbcur) & bool(dbconn) & bool(fmcheckrun):
+            columnStr=createTable(dbcur,self.name,"RUN_NAME TEXT, OVS_NAME TEXT, FLOW_LINE TEXT,COOKIE_VALUE INT")
+            logging.info("Please wait while we write to DB...")
 
         regex = re.compile(r'(cookie=.*)', re.IGNORECASE)
         regexvalues = re.compile(
@@ -70,7 +80,12 @@ class OVS(Switch):
                 flow = {'id': flowid, 'cookie': int(match.group(1), 16), 'table': match.group(2),
                         'packets': match.group(3), 'bytes': match.group(4)}
                 flows.append(flow)
+            if bool(dbcur) & bool(dbconn) & bool(fmcheckrun):
+                enterTabledata(dbcur, dbconn,self.name,"RUN_NAME, OVS_NAME, FLOW_LINE, COOKIE_VALUE", fmcheckrun, self.name, line, flow['cookie'])
         logging.debug(flows)
+        if bool(dbcur) & bool(dbconn) & bool(fmcheckrun):
+            logging.info("DB write complete for switch %s", self.name)
+            dbClose(dbcur,dbconn)
         return flows
 
     def get_groups(self):

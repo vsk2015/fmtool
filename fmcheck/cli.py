@@ -3,8 +3,9 @@
 Usage:
   fmcheck links [-srd] [--topology=FILE] [--controller=IP]...
   fmcheck nodes [-srd] [--topology=FILE] [--controller=IP]...
-  fmcheck flows [-ad] [--topology=FILE] [--controller=IP]...
+  fmcheck flows [-adzf] [--topology=FILE] [--controller=IP] [--storedata=DATABASE] [--fmcheckrun=THISFMCHECKRUN]...
   fmcheck roles [-d] [--topology=FILE] [--controller=IP]...
+  fmcheck compare [-dzy] [--topology=FILE] [--controller=IP] [--storedata=DATABASE] [--compareruns=RUNNAME]...
   fmcheck sync-status [-d] [--topology=FILE] [--controller=IP]...
   fmcheck delete-groups <name> [-d] [--topology=FILE]
   fmcheck delete-flows <name> [-d] [--topology=FILE]
@@ -35,6 +36,9 @@ Options:
   -c, --controller=IP   Controller IP address
   -s --stopped      If Mininet is not running.
   -r --segmentrouting  Use segment routing topology.
+  -z, --storedata=DATABASE   DATABASE file name Stores flows data in Database
+  -f, --fmcheckrun=THISFMCHECKRUN   THIS FMCHECK RUN name data will be mapped to in DB
+  -y, --compareruns=RUNNAME   Compare flow data of RUN1 and RUN2
   -a --check-stats  Check flow/groups states with previous check
   -d --debug  Log debug level
   --version     Show version.
@@ -46,6 +50,7 @@ import sys
 import yaml
 import logging
 import coloredlogs
+from fmcheck.db import createDb, dbClose
 from fmcheck.topology import Topology
 import fmcheck.openflow
 #from docopt import docopt  : On some systems like my lap this is not working
@@ -59,7 +64,10 @@ class Shell(object):
 
         # Reduce urllib3 logging messages
         logging.getLogger("urllib3").setLevel(logging.WARNING)
-
+        dbname = False
+        fmcheckrun = False
+        run1=None
+        run2=None
         # Colored logging
         if arguments['--debug']:
             logging.getLogger().setLevel(logging.DEBUG)
@@ -83,6 +91,20 @@ class Shell(object):
             if not topo_file:
                 raise Exception('default topology file not found')
 
+        if arguments['--storedata']:
+            dbname = arguments['--storedata'][0]
+            if not arguments['--fmcheckrun'] and not arguments['--compareruns']:
+                logging.info("Please provide fmcheck run name")
+            if not arguments['--compareruns']:
+                fmcheckrun = arguments['--fmcheckrun'][0]
+
+        if arguments['--compareruns']:
+            run1 = arguments['--compareruns'][0]
+            run2 = arguments['--compareruns'][1]
+            if not (run1 or run2):
+               print ("Please provide RUN name to compare ")
+               return
+
         props = None
         if os.path.isfile(topo_file):
             with open(topo_file, 'r') as f:
@@ -104,6 +126,7 @@ class Shell(object):
 
         result = None
         topology = Topology(props)
+
         if arguments['links']:
             should_be_up = True if not arguments['--stopped'] else False
             include_sr = True if arguments['--segmentrouting'] else False
@@ -120,7 +143,11 @@ class Shell(object):
             result = topology.validate_nodes_roles()
 
         elif arguments['flows']:
-            result = topology.validate_openflow_elements()
+            print ("Within flows")
+            result = topology.validate_openflow_elements(dbname, fmcheckrun)
+
+        elif arguments['compare']:
+            result = topology.compare_fmcheck_runs(dbname, run1, run2)
 
         elif arguments['sync-status']:
             result = topology.validate_cluster()
@@ -206,7 +233,6 @@ class Shell(object):
         elif arguments['get-node-summary']:
             result = topology.get_random_controller().get_node_summary(
                 topology.switches_by_openflow_name)
-
         if not result:
             sys.exit(1)
 
